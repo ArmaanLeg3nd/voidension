@@ -244,8 +244,6 @@ func proxyHandler(w http.ResponseWriter, r *http.Request) {
 		currentXFF = remoteIP
 	}
 
-	// if x real ip not set, set it to the remote ip
-
 	newReq.Header.Del("X-Forwarded-For")
 	newReq.Header.Add("X-Forwarded-For", currentXFF+","+currentIP)
 	newReq.Header.Add("X-Real-IP", remoteIP)
