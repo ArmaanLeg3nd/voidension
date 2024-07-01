@@ -34,7 +34,7 @@ go mod tidy
 
 ##### 2. Create a configuration file
 
-To configure the application, create a YAML configuration file named config.yaml and define the following parameters under the app and server sections:
+To configure the application, create a YAML configuration file named config.yaml and define the following parameters under the app, incoming and outgoing sections:
 
 ###### `app` Parameters
 
@@ -82,7 +82,7 @@ outgoing:
 Run voidension by running the following command
 
 ```shell
-go run main.go [path/to/YAML/configuration/file]
+go run main.go --config [path/to/YAML/configuration/file]
 ```
 
 OR
