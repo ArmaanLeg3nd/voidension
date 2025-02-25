@@ -17,26 +17,26 @@ func loadConfig(configData []byte) error {
 	return err
 }
 
-func initDir(config *Config) {
+func initDir(config *Config) error {
 	if _, err := os.Stat(config.App.DirPath); os.IsNotExist(err) {
-		err := os.MkdirAll(config.App.DirPath, 0755)
-		if err != nil {
-			log.Fatal("Failed to create directory:", err)
+		if err := os.MkdirAll(config.App.DirPath, 0755); err != nil {
+			return err
 		}
 	}
+	return nil
 }
 
-func initLoggers(config *Config) {
+func initLoggers(config *Config) error {
 	logFilePath := filepath.Join(config.App.DirPath, "Vlogs.txt")
 	logFile, err := os.OpenFile(logFilePath, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0666)
 	if err != nil {
-		log.Fatal("Failed to open log file:", err)
+		return err
 	}
 
 	accessLogFilePath := filepath.Join(config.App.DirPath, "Vaccess.txt")
 	accessLogFile, err := os.OpenFile(accessLogFilePath, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0666)
 	if err != nil {
-		log.Fatal("Failed to open access log file:", err)
+		return err
 	}
 
 	logWriter := io.MultiWriter(logFile, os.Stdout)
@@ -48,6 +48,8 @@ func initLoggers(config *Config) {
 	accessLog = log.New(accessLogWriter, "V: ACCESS: ", log.Ldate|log.Ltime|log.Lshortfile)
 
 	infoLog.Println("Voidension started")
+
+	return nil
 }
 
 func initServerPool() {

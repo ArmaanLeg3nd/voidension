@@ -21,11 +21,23 @@ var (
 
 func Launch(configData []byte) {
 	err := loadConfig(configData)
+
 	if err != nil {
 		errorLog.Fatalf("Error parsing YAML configuration: %v", err)
 	}
-	initDir(&config)
-	initLoggers(&config)
+
+	err = initDir(&config)
+
+	if err != nil {
+		errorLog.Fatalf("Error creating directory: %v", err)
+	}
+
+	err = initLoggers(&config)
+
+	if err != nil {
+		log.Fatalf("Error initializing loggers: %v", err)
+	}
+
 	initServerPool()
 
 	http.HandleFunc(config.App.ReceivePath, proxyHandler)
