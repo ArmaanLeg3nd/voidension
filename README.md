@@ -16,20 +16,12 @@ This project is designed to provide a simple, fast and easy to configure load ba
 
 #### Instructions for Setup
 
-##### 0. Clone this repository
+##### 1. Install
 
-Run the following command in the command line to clone the repostiory
-
-```shell
-git clone https://github.com/ArmaanLeg3nd/voidension.git
-```
-
-##### 1. Install the Dependencies
-
-Run the following command in the command line to install all the dependencies
+Run the following command in the command line to install voidension 
 
 ```shell
-go mod tidy
+go get github.com/armaanleg3nd/voidension
 ```
 
 ##### 2. Create a configuration file
@@ -77,18 +69,34 @@ outgoing:
   serverPostURLs: ["http://localhost:8080/receive"]
 ```
 
-##### 3. Run voidension
+##### 3. Import voidension
 
-Run voidension by running the following command
+Import voidension in your code by adding the following package to your imports:
 
-```shell
-go run main.go --config [path/to/YAML/configuration/file]
+```go
+import "github.com/armaanleg3nd/voidension"
 ```
 
-OR
+##### 4. Run voidension
 
-Incase the config.yaml file is in the root directory, run the following command
+Run voidension by passing the bytes of the configuration to the `Launch` method of voidension library.
 
-```shell
-go run main.go
+```go
+package main
+
+import (
+	"log"
+	"os"
+
+	"github.com/armaanleg3nd/voidension"
+)
+
+func main() {
+	configData, err := os.ReadFile("config.yaml")
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	voidension.Launch(configData)
+}
 ```
