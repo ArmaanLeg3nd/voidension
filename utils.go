@@ -1,6 +1,7 @@
 package voidension
 
 import (
+	"fmt"
 	"io"
 	"log"
 	"net"
@@ -11,6 +12,18 @@ import (
 
 	"gopkg.in/yaml.v3"
 )
+
+func printASCIIArt() {
+	asciiArt := `
+             _     _                _             
+ /\   /\___ (_) __| | ___ _ __  ___(_) ___  _ __  
+ \ \ / /\_/\| |/ _` + "`" + ` |/ _ \ '_ \/ __| |/ _ \| '_ \ 
+  \ V /--•--| | (_| |  __/ | | \__ \ | (_) | | | |
+   \_/ \/_\/|_|\__,_|\___|_| |_|___/_|\___/|_| |_|
+                                                  
+`
+	fmt.Println(asciiArt)
+}
 
 func loadConfig(configData []byte) error {
 	err := yaml.Unmarshal(configData, &config)

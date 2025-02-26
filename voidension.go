@@ -20,6 +20,8 @@ var (
 )
 
 func Launch(configData []byte) {
+
+	printASCIIArt()
 	err := loadConfig(configData)
 
 	if err != nil {
