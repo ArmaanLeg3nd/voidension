@@ -10,13 +10,13 @@
 </div>
 <br />
 
-#### About Voidension
+### About Voidension
 
 This project is designed to provide a simple, fast and easy to configure load balancer. It checks if a server is alive by a simple tcp dial. It forwards the request to the any server among the server list that is available. Since it aims for simplicity, it only supports load balancing based on the server availabilty. It locks the server that is being used to prevent multiple requests to the same server. It also supports a request queue to handle the requests when none of the servers are available.
 
-#### Instructions for Setup
+### Instructions for Setup
 
-##### 1. Install
+#### 1. Install
 
 Run the following command in the command line to install voidension 
 
@@ -24,9 +24,17 @@ Run the following command in the command line to install voidension
 go get github.com/armaanleg3nd/voidension
 ```
 
-##### 2. Create a configuration file
+#### 2. Import voidension
 
-To configure the application, create a YAML configuration file named config.yaml and define the following parameters under the app, incoming and outgoing sections:
+Import voidension in your code by adding the following package to your imports:
+
+```go
+import "github.com/armaanleg3nd/voidension"
+```
+
+#### 3. Configure and Launch  
+
+Create a YAML configuration file and define the following parameters under the app, incoming and outgoing sections: 
 
 ###### `app` Parameters
 
@@ -69,17 +77,7 @@ outgoing:
   serverPostURLs: ["http://localhost:8080/receive"]
 ```
 
-##### 3. Import voidension
-
-Import voidension in your code by adding the following package to your imports:
-
-```go
-import "github.com/armaanleg3nd/voidension"
-```
-
-##### 4. Run voidension
-
-Run voidension by passing the bytes of the configuration to the `Launch` method of voidension library.
+Then, load the configuration and launch `voidension`:  
 
 ```go
 package main
@@ -97,6 +95,7 @@ func main() {
 		log.Fatal(err)
 	}
 
-	voidension.Launch(configData)
+	voidension.LoadConfig(configData) // Load the configuration from file
+	voidension.Launch()
 }
 ```

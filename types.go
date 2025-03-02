@@ -1,6 +1,6 @@
 package voidension
 
-type Config struct {
+type configStruct struct {
 	App struct {
 		Port                     int    `yaml:"port"`
 		DirPath                  string `yaml:"dirPath"`
@@ -15,7 +15,11 @@ type Config struct {
 	} `yaml:"outgoing"`
 }
 
-type Server struct {
+type secure struct {
+	config *configStruct
+}
+
+type serverStruct struct {
 	URL    string
 	Locked bool
 	Alive  bool

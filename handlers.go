@@ -8,7 +8,7 @@ import (
 	"time"
 )
 
-func forwardRequest(req *http.Request, server *Server) {
+func forwardRequest(req *http.Request, server *serverStruct) {
 	client := &http.Client{Timeout: 10 * time.Second}
 
 	bodyBytes, err := io.ReadAll(req.Body)
@@ -68,7 +68,7 @@ func handleRequests() {
 	}
 }
 
-func proxyHandler(w http.ResponseWriter, r *http.Request) {
+func (s *secure) proxyHandler(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
 		http.Error(w, "Only POST method is allowed", http.StatusMethodNotAllowed)
 		return
@@ -80,7 +80,7 @@ func proxyHandler(w http.ResponseWriter, r *http.Request) {
 		remoteIP, _, _ = net.SplitHostPort(r.RemoteAddr)
 	}
 
-	if !isIPAllowed(remoteIP) {
+	if !isIPAllowed(remoteIP, s.config.Incoming.AllowedIPs) {
 		warnLog.Printf("Denied request from IP: %s", remoteIP)
 		http.Error(w, "Access Denied", http.StatusForbidden)
 		return

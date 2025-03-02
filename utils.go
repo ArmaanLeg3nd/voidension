@@ -13,6 +13,40 @@ import (
 	"gopkg.in/yaml.v3"
 )
 
+func LoadConfig(configData []byte) {
+	var loadedConfig configStruct
+	err := yaml.Unmarshal(configData, &loadedConfig)
+	if err != nil {
+		log.Fatalf("Error loading config: %v", err)
+	}
+
+	configInstance = &loadedConfig
+}
+
+func isConfigInitialized() bool {
+	return configInstance != nil
+}
+
+func getConfig() *configStruct {
+	if configInstance == nil {
+		log.Fatal("Config not initialized")
+	}
+	return configInstance
+}
+
+func copyConfig(original configStruct) *configStruct {
+	var copied configStruct
+	data, err := yaml.Marshal(original)
+	if err != nil {
+		log.Fatalf("Failed to copy global config: %v", err)
+	}
+	err = yaml.Unmarshal(data, &copied)
+	if err != nil {
+		log.Fatalf("Failed to copy global config: %v", err)
+	}
+	return &copied
+}
+
 func printASCIIArt() {
 	asciiArt := `
              _     _                _             
@@ -25,28 +59,23 @@ func printASCIIArt() {
 	fmt.Println(asciiArt)
 }
 
-func loadConfig(configData []byte) error {
-	err := yaml.Unmarshal(configData, &config)
-	return err
-}
-
-func initDir(config *Config) error {
-	if _, err := os.Stat(config.App.DirPath); os.IsNotExist(err) {
-		if err := os.MkdirAll(config.App.DirPath, 0755); err != nil {
+func (s *secure) initDir() error {
+	if _, err := os.Stat(s.config.App.DirPath); os.IsNotExist(err) {
+		if err := os.MkdirAll(s.config.App.DirPath, 0755); err != nil {
 			return err
 		}
 	}
 	return nil
 }
 
-func initLoggers(config *Config) error {
-	logFilePath := filepath.Join(config.App.DirPath, "Vlogs.txt")
+func (s *secure) initLoggers() error {
+	logFilePath := filepath.Join(s.config.App.DirPath, "Vlogs.txt")
 	logFile, err := os.OpenFile(logFilePath, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0666)
 	if err != nil {
 		return err
 	}
 
-	accessLogFilePath := filepath.Join(config.App.DirPath, "Vaccess.txt")
+	accessLogFilePath := filepath.Join(s.config.App.DirPath, "Vaccess.txt")
 	accessLogFile, err := os.OpenFile(accessLogFilePath, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0666)
 	if err != nil {
 		return err
@@ -65,13 +94,13 @@ func initLoggers(config *Config) error {
 	return nil
 }
 
-func initServerPool() {
-	for _, url := range config.Outgoing.ServerPostURLs {
-		serverPool = append(serverPool, &Server{URL: url, Locked: false, Alive: true})
+func (s *secure) initServerPool() {
+	for _, url := range s.config.Outgoing.ServerPostURLs {
+		serverPool = append(serverPool, &serverStruct{URL: url, Locked: false, Alive: true})
 	}
 }
 
-func findAvailableServer() *Server {
+func findAvailableServer() *serverStruct {
 	mu.Lock()
 	defer mu.Unlock()
 	for _, server := range serverPool {
@@ -83,18 +112,18 @@ func findAvailableServer() *Server {
 	return nil
 }
 
-func unlockServer(server *Server) {
+func unlockServer(server *serverStruct) {
 	mu.Lock()
 	defer mu.Unlock()
 	server.Locked = false
 }
 
-func isIPAllowed(ip string) bool {
-	if len(config.Incoming.AllowedIPs) == 0 {
+func isIPAllowed(ip string, allowedIPs []string) bool {
+	if len(allowedIPs) == 0 {
 		return true
 	}
 
-	for _, allowedIP := range config.Incoming.AllowedIPs {
+	for _, allowedIP := range allowedIPs {
 		if ip == allowedIP {
 			return true
 		}
@@ -102,11 +131,11 @@ func isIPAllowed(ip string) bool {
 	return false
 }
 
-func checkServerAvailability() {
+func checkServerAvailability(checkAvailabilityTimeout int) {
 	for {
 		mu.Lock()
 		for _, server := range serverPool {
-			go func(s *Server) {
+			go func(s *serverStruct) {
 				hostPort := extractHostPort(s.URL)
 
 				conn, err := net.DialTimeout("tcp", hostPort, 5*time.Second)
@@ -121,7 +150,7 @@ func checkServerAvailability() {
 			}(server)
 		}
 		mu.Unlock()
-		time.Sleep(time.Duration(config.App.CheckAvailabilityTimeout) * time.Millisecond)
+		time.Sleep(time.Duration(checkAvailabilityTimeout) * time.Millisecond)
 	}
 }
 
