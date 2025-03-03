@@ -20,9 +20,9 @@ func forwardRequest(w http.ResponseWriter, reqBuffer *requestBuffer) {
 	maxRetries := getConfig().App.MaxRetries
 	var lastErr error
 	var lastStatusCode int
-	baseBackoffTime := time.Duration(getConfig().App.BaseBackoffTime) * time.Millisecond // Starting with 100ms
-	maxBackoffTime := 30 * time.Second                                                   // Cap at 30 seconds
-	jitterFactor := 0.2                                                                  // 20% random jitter
+	baseBackoffTime := time.Duration(getConfig().App.BaseBackoffTime) * time.Millisecond
+	maxBackoffTime := 30 * time.Second // Cap at 30 seconds
+	jitterFactor := 0.2                // 20% random jitter
 
 	for attempt := 0; attempt < maxRetries; attempt++ {
 		// Find an available server
@@ -142,7 +142,6 @@ func forwardRequest(w http.ResponseWriter, reqBuffer *requestBuffer) {
 			errorLog.Printf("Server %s returned error status: %d - Passing through to client", server.URL, resp.StatusCode)
 			lastStatusCode = resp.StatusCode
 
-			// Pass the 5xx error response directly back to the client without retrying
 			for key, values := range resp.Header {
 				for _, value := range values {
 					w.Header().Add(key, value)

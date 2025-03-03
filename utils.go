@@ -2,7 +2,6 @@ package voidension
 
 import (
 	"bytes"
-	"errors"
 	"fmt"
 	"io"
 	"log"
@@ -37,43 +36,43 @@ func LoadConfig(configData []byte) {
 
 func validateConfig(loadedConfig configStruct) error {
 	if loadedConfig.App.Port < 1 || loadedConfig.App.Port > 65535 {
-		return errors.New("invalid port: The port must be within valid range")
+		return fmt.Errorf("invalid port: The port must be within valid range")
 	}
 
 	if loadedConfig.App.DirPath == "" {
-		return errors.New("the dirPath value must not be empty")
+		return fmt.Errorf("the dirPath value must not be empty")
 	}
 
 	if loadedConfig.App.ReceivePath == "" {
-		return errors.New("the receivePath value must not be empty")
+		return fmt.Errorf("the receivePath value must not be empty")
 	}
 
 	if loadedConfig.App.CheckAvailabilityTimeout < 0 {
-		return errors.New("the checkAvailabilityTimeout value cannot be negative or 0")
+		return fmt.Errorf("the checkAvailabilityTimeout value cannot be negative or 0")
 	} else if loadedConfig.App.CheckAvailabilityTimeout == 0 {
 		loadedConfig.App.CheckAvailabilityTimeout = 1000
 	}
 
 	if loadedConfig.App.MaxRetries < 0 {
-		return errors.New("the maxRetries value cannot be less than or equal to 0")
+		return fmt.Errorf("the maxRetries value cannot be less than or equal to 0")
 	} else if loadedConfig.App.MaxRetries == 0 {
 		loadedConfig.App.MaxRetries = 3
 	}
 
 	if loadedConfig.App.LargeBodyThreshold < 0 {
-		return errors.New("the largeBodyThreshold value cannot be less than or equal to 0")
+		return fmt.Errorf("the largeBodyThreshold value cannot be less than or equal to 0")
 	} else if loadedConfig.App.LargeBodyThreshold == 0 {
 		loadedConfig.App.LargeBodyThreshold = 1024 * 1024 // 1MB default
 	}
 
 	if loadedConfig.App.BaseBackoffTime < 0 {
-		return errors.New("the baseBackoffTime value cannot be negative or 0")
+		return fmt.Errorf("the baseBackoffTime value cannot be negative or 0")
 	} else if loadedConfig.App.BaseBackoffTime == 0 {
 		loadedConfig.App.BaseBackoffTime = 100
 	}
 
 	if len(loadedConfig.Outgoing.ServerPostURLs) == 0 {
-		return errors.New("the serverPostURLs list must have at least one item")
+		return fmt.Errorf("the serverPostURLs list must have at least one item")
 	}
 
 	return nil
@@ -162,6 +161,7 @@ func (s *secure) initLoggers() error {
 // initServerPool creates a pool of server structs from the serverPostURLs
 // specified in the configuration.
 func (s *secure) initServerPool() {
+	serverPool = nil
 	for _, url := range s.config.Outgoing.ServerPostURLs {
 		serverPool = append(serverPool, &serverStruct{URL: url, Locked: false, Alive: true})
 	}
@@ -221,6 +221,10 @@ func createRequestBuffer(r *http.Request, remoteIP, currentIP string) (*requestB
 
 	for k, v := range r.Header {
 		reqBuffer.headers[k] = v
+	}
+
+	if r.Body == nil {
+		return &reqBuffer, fmt.Errorf("request body is nil")
 	}
 
 	bodyBytes, err := io.ReadAll(r.Body)
