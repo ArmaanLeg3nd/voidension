@@ -1,18 +1,25 @@
 package voidension
 
 import (
+	"bytes"
+	"errors"
 	"fmt"
 	"io"
 	"log"
 	"net"
+	"net/http"
 	"os"
+	"os/signal"
 	"path/filepath"
 	"strings"
+	"syscall"
 	"time"
 
 	"gopkg.in/yaml.v3"
 )
 
+// takes a YAML byte slice and loads it into the configStruct, and it is then
+// stored in the package global variable configInstance.
 func LoadConfig(configData []byte) {
 	var loadedConfig configStruct
 	err := yaml.Unmarshal(configData, &loadedConfig)
@@ -20,7 +27,56 @@ func LoadConfig(configData []byte) {
 		log.Fatalf("Error loading config: %v", err)
 	}
 
+	err = validateConfig(loadedConfig)
+	if err != nil {
+		log.Fatalf("Error validating config: %v", err)
+	}
+
 	configInstance = &loadedConfig
+}
+
+func validateConfig(loadedConfig configStruct) error {
+	if loadedConfig.App.Port < 1 || loadedConfig.App.Port > 65535 {
+		return errors.New("invalid port: The port must be within valid range")
+	}
+
+	if loadedConfig.App.DirPath == "" {
+		return errors.New("the dirPath value must not be empty")
+	}
+
+	if loadedConfig.App.ReceivePath == "" {
+		return errors.New("the receivePath value must not be empty")
+	}
+
+	if loadedConfig.App.CheckAvailabilityTimeout < 0 {
+		return errors.New("the checkAvailabilityTimeout value cannot be negative or 0")
+	} else if loadedConfig.App.CheckAvailabilityTimeout == 0 {
+		loadedConfig.App.CheckAvailabilityTimeout = 1000
+	}
+
+	if loadedConfig.App.MaxRetries < 0 {
+		return errors.New("the maxRetries value cannot be less than or equal to 0")
+	} else if loadedConfig.App.MaxRetries == 0 {
+		loadedConfig.App.MaxRetries = 3
+	}
+
+	if loadedConfig.App.LargeBodyThreshold < 0 {
+		return errors.New("the largeBodyThreshold value cannot be less than or equal to 0")
+	} else if loadedConfig.App.LargeBodyThreshold == 0 {
+		loadedConfig.App.LargeBodyThreshold = 1024 * 1024 // 1MB default
+	}
+
+	if loadedConfig.App.BaseBackoffTime < 0 {
+		return errors.New("the baseBackoffTime value cannot be negative or 0")
+	} else if loadedConfig.App.BaseBackoffTime == 0 {
+		loadedConfig.App.BaseBackoffTime = 100
+	}
+
+	if len(loadedConfig.Outgoing.ServerPostURLs) == 0 {
+		return errors.New("the serverPostURLs list must have at least one item")
+	}
+
+	return nil
 }
 
 func isConfigInitialized() bool {
@@ -59,15 +115,24 @@ func printASCIIArt() {
 	fmt.Println(asciiArt)
 }
 
+// initDir creates the directory specified by App.DirPath if it does not exist.
 func (s *secure) initDir() error {
 	if _, err := os.Stat(s.config.App.DirPath); os.IsNotExist(err) {
 		if err := os.MkdirAll(s.config.App.DirPath, 0755); err != nil {
 			return err
 		}
 	}
+
+	var err error
+	tempDir, err = os.MkdirTemp(s.config.App.DirPath, "request_buffer")
+	if err != nil {
+		return fmt.Errorf("failed to create temp directory: %v", err)
+	}
+
 	return nil
 }
 
+// initLoggers sets up the loggers for voidension.
 func (s *secure) initLoggers() error {
 	logFilePath := filepath.Join(s.config.App.DirPath, "Vlogs.txt")
 	logFile, err := os.OpenFile(logFilePath, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0666)
@@ -94,12 +159,130 @@ func (s *secure) initLoggers() error {
 	return nil
 }
 
+// initServerPool creates a pool of server structs from the serverPostURLs
+// specified in the configuration.
 func (s *secure) initServerPool() {
 	for _, url := range s.config.Outgoing.ServerPostURLs {
 		serverPool = append(serverPool, &serverStruct{URL: url, Locked: false, Alive: true})
 	}
 }
 
+// setupShutdown sets up a goroutine to handle SIGINT and SIGTERM. When
+// received, it logs a message, cleans up temporary files, and exits the program.
+func setupShutdown() {
+	c := make(chan os.Signal, 1)
+	signal.Notify(c, os.Interrupt, syscall.SIGTERM)
+
+	go func() {
+		<-c
+		infoLog.Println("Shutting down voidension...")
+
+		if tempDir != "" {
+			infoLog.Println("Cleaning up temporary files...")
+			os.RemoveAll(tempDir)
+		}
+
+		infoLog.Println("Shutdown complete")
+		os.Exit(0)
+	}()
+}
+
+// startStatsLogger starts a goroutine to log the number of active servers in
+// the serverPool at the given interval.
+func startStatsLogger(interval time.Duration) {
+	ticker := time.NewTicker(interval)
+	go func() {
+		for range ticker.C {
+			mu.Lock()
+			activeServers := 0
+			for _, server := range serverPool {
+				if server.Alive {
+					activeServers++
+				}
+			}
+			mu.Unlock()
+
+			infoLog.Printf("Stats: %d/%d servers active", activeServers, len(serverPool))
+		}
+	}()
+}
+
+// createRequestBuffer creates a requestBuffer from the given http.Request,
+// remoteIP and currentIP. It copies the headers and body of the request to the
+// requestBuffer, and if the body is larger than the LargeBodyThreshold
+// configuration, it writes the body to a temporary file and stores the file
+// path in the requestBuffer.
+func createRequestBuffer(r *http.Request, remoteIP, currentIP string) (*requestBuffer, error) {
+	var reqBuffer requestBuffer
+	reqBuffer.headers = make(http.Header)
+	reqBuffer.method = r.Method
+	reqBuffer.remoteIP = remoteIP
+	reqBuffer.currentIP = currentIP
+
+	for k, v := range r.Header {
+		reqBuffer.headers[k] = v
+	}
+
+	bodyBytes, err := io.ReadAll(r.Body)
+	if err != nil {
+		return nil, err
+	}
+	r.Body.Close()
+
+	if int64(len(bodyBytes)) > getConfig().App.LargeBodyThreshold {
+		tempFile, err := os.CreateTemp(tempDir, "req_body_*.tmp")
+		if err != nil {
+			return nil, err
+		}
+
+		_, err = tempFile.Write(bodyBytes)
+		if err != nil {
+			tempFile.Close()
+			os.Remove(tempFile.Name())
+			return nil, err
+		}
+
+		reqBuffer.isLarge = true
+		reqBuffer.filePath = tempFile.Name()
+		tempFile.Close()
+	} else {
+		reqBuffer.isLarge = false
+		reqBuffer.body = bodyBytes
+	}
+
+	r.Body = io.NopCloser(bytes.NewReader(bodyBytes))
+
+	return &reqBuffer, nil
+}
+
+// Get the body from a request buffer (either from memory or from file)
+func (rb *requestBuffer) getBody() ([]byte, error) {
+	rb.mutex.Lock()
+	defer rb.mutex.Unlock()
+
+	if rb.isLarge {
+		body, err := os.ReadFile(rb.filePath)
+		if err != nil {
+			return nil, err
+		}
+		return body, nil
+	}
+
+	return rb.body, nil
+}
+
+func (rb *requestBuffer) cleanup() {
+	rb.mutex.Lock()
+	defer rb.mutex.Unlock()
+
+	if rb.isLarge && rb.filePath != "" {
+		os.Remove(rb.filePath)
+		rb.filePath = ""
+	}
+}
+
+// Finds an available server in the pool. An available server is one that is
+// alive and not currently locked.
 func findAvailableServer() *serverStruct {
 	mu.Lock()
 	defer mu.Unlock()
@@ -131,6 +314,18 @@ func isIPAllowed(ip string, allowedIPs []string) bool {
 	return false
 }
 
+func extractHostPort(url string) string {
+	parts := strings.Split(url, "://")
+	if len(parts) > 1 {
+		url = parts[1]
+	}
+
+	parts = strings.Split(url, "/")
+	return parts[0]
+}
+
+// checkServerAvailability starts a goroutine for each server in the serverPool
+// to check if the server is up or down.
 func checkServerAvailability(checkAvailabilityTimeout int) {
 	for {
 		mu.Lock()
@@ -152,14 +347,4 @@ func checkServerAvailability(checkAvailabilityTimeout int) {
 		mu.Unlock()
 		time.Sleep(time.Duration(checkAvailabilityTimeout) * time.Millisecond)
 	}
-}
-
-func extractHostPort(url string) string {
-	parts := strings.Split(url, "://")
-	if len(parts) > 1 {
-		url = parts[1]
-	}
-
-	parts = strings.Split(url, "/")
-	return parts[0]
 }

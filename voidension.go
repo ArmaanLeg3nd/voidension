@@ -5,20 +5,25 @@ import (
 	"log"
 	"net/http"
 	"sync"
+	"time"
 )
 
 var (
 	configInstance *configStruct
 	serverPool     []*serverStruct
 	mu             sync.Mutex
-	requestQueue   = make(chan *http.Request, 100)
-	responseQueue  = make(chan *http.Response, 100)
 	infoLog        *log.Logger
 	warnLog        *log.Logger
 	errorLog       *log.Logger
 	accessLog      *log.Logger
+	tempDir        string
 )
 
+// Launch initializes and starts the Voidension load balancer with the given
+// configuration. It configures the directory, loggers, server pool, and starts
+// the HTTP server. It also starts a goroutine to periodically check the
+// availability of the servers and logs statistics about the load balancer every
+// 10 seconds.
 func Launch() {
 	if !isConfigInitialized() {
 		log.Fatal("Config not set!")
@@ -30,7 +35,7 @@ func Launch() {
 
 	err := secure.initDir()
 	if err != nil {
-		errorLog.Fatalf("Error creating directory: %v", err)
+		log.Fatalf("Error creating directory: %v", err)
 	}
 
 	err = secure.initLoggers()
@@ -40,8 +45,14 @@ func Launch() {
 
 	secure.initServerPool()
 	http.HandleFunc(secure.config.App.ReceivePath, secure.proxyHandler)
-	go handleRequests()
 	go checkServerAvailability(secure.config.App.CheckAvailabilityTimeout)
+	startStatsLogger(10 * time.Second)
+	setupShutdown()
+
 	infoLog.Printf("Starting the load balancer on port %d", secure.config.App.Port)
+	infoLog.Printf("Attempting to forward requests at most %d times before failing", secure.config.App.MaxRetries)
+	infoLog.Printf("Base backoff time: %d ms", secure.config.App.BaseBackoffTime)
+	infoLog.Printf("Large request threshold: %d bytes", secure.config.App.LargeBodyThreshold)
+
 	errorLog.Fatal(http.ListenAndServe(fmt.Sprintf(":%d", secure.config.App.Port), nil))
 }

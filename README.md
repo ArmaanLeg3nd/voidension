@@ -12,7 +12,7 @@
 
 ### About Voidension
 
-This project is designed to provide a simple, fast and easy to configure load balancer. It checks if a server is alive by a simple tcp dial. It forwards the request to the any server among the server list that is available. Since it aims for simplicity, it only supports load balancing based on the server availabilty. It locks the server that is being used to prevent multiple requests to the same server. It also supports a request queue to handle the requests when none of the servers are available.
+This project is designed to provide a simple, fast and easy to configure load balancer. It checks if a server is alive by a simple tcp dial. It forwards the request to the any server among the server list that is available. Since it aims for simplicity, it only supports load balancing based on the server availabilty. It locks the server that is being used to prevent multiple requests to the same server at the same time. It also supports request queuing and retries, using exponential backoff for each retry attempt.
 
 ### Instructions for Setup
 
@@ -44,6 +44,9 @@ app:
   dirPath: string                    # Specify the directory path for the application (string).
   receivePath: string                # Specify the path where the application will receive the POST requests (string).
   checkAvailabilityTimeout: integer  # Specify the timeout in milliseconds for checking if the servers are alive (integer).
+  maxRetries: integer                # Specify the maximum number of request retries (integer).
+  baseBackoffTime: integer           # Specify the base backoff time in milliseconds (integer).
+  largeBodyThreshold: integer        # Specify the threshold for large request body size in bytes (integer).
 
 ```
 
@@ -71,6 +74,9 @@ app:
   dirPath: "./voidension"
   receivePath: "/receive"
   checkAvailabilityTimeout: 10000
+  maxRetries: 3
+  baseBackoffTime: 1000
+  largeBodyThreshold: 1048576
 incoming:
   allowedIPs: []
 outgoing:
