@@ -54,9 +54,14 @@ app:
 
 ```yaml
 incoming:
-  allowedIPs: []string               # Specify the allowed host IPs in an array of strings. Can be left empty to allow all incoming request IPs.
+  allowedIPs: []string               # Direct TCP peer IPv4/IPv6 addresses. Empty allows all peers.
 
 ```
+
+`allowedIPs` accepts literal IPv4/IPv6 addresses and checks the TCP peer, ignoring
+client-supplied IP headers. Use `["127.0.0.1", "::1"]` for local access only.
+Behind a proxy or NAT, allowing its address permits clients connecting through it.
+Outgoing `X-Real-IP` and `X-Forwarded-For` contain the peer IP; `Forwarded` is removed.
 
 ###### `outgoing` Parameters
 

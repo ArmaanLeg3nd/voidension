@@ -8,6 +8,7 @@ import (
 	"math/rand/v2"
 	"net"
 	"net/http"
+	"net/netip"
 	"time"
 )
 
@@ -95,15 +96,10 @@ func forwardRequest(w http.ResponseWriter, reqBuffer *requestBuffer) {
 			}
 		}
 
-		// Add or update forwarded headers
-		currentXFF := proxyReq.Header.Get("X-Forwarded-For")
-		if currentXFF == "" {
-			currentXFF = reqBuffer.remoteIP
-		}
-
-		proxyReq.Header.Del("X-Forwarded-For")
-		proxyReq.Header.Add("X-Forwarded-For", currentXFF+","+reqBuffer.currentIP)
-		proxyReq.Header.Add("X-Real-IP", reqBuffer.remoteIP)
+		// No upstream proxy is trusted: replace caller-supplied IP claims.
+		proxyReq.Header.Del("Forwarded")
+		proxyReq.Header.Set("X-Forwarded-For", reqBuffer.remoteIP)
+		proxyReq.Header.Set("X-Real-IP", reqBuffer.remoteIP)
 
 		// Set timeout for the request
 		client := &http.Client{
@@ -193,11 +189,15 @@ func (s *secure) proxyHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	remoteIP := r.Header.Get("X-Real-IP")
+	// Authorize the TCP peer, never an IP claimed in an HTTP header.
+	remoteIP, _, err := net.SplitHostPort(r.RemoteAddr)
 	currentIP := r.RemoteAddr
-	if remoteIP == "" {
-		remoteIP, _, _ = net.SplitHostPort(r.RemoteAddr)
+	peerIP, parseErr := netip.ParseAddr(remoteIP)
+	if err != nil || parseErr != nil {
+		http.Error(w, "Access Denied", http.StatusForbidden)
+		return
 	}
+	remoteIP = peerIP.WithZone("").Unmap().String()
 
 	if !isIPAllowed(remoteIP, s.config.Incoming.AllowedIPs) {
 		warnLog.Printf("Denied request from IP: %s", remoteIP)

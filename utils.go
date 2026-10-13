@@ -74,6 +74,11 @@ func validateConfig(loadedConfig configStruct) error {
 	if len(loadedConfig.Outgoing.ServerPostURLs) == 0 {
 		return fmt.Errorf("the serverPostURLs list must have at least one item")
 	}
+	for _, ip := range loadedConfig.Incoming.AllowedIPs {
+		if net.ParseIP(ip) == nil {
+			return fmt.Errorf("invalid allowedIPs entry %q: expected an IPv4 or IPv6 address", ip)
+		}
+	}
 
 	return nil
 }
@@ -306,12 +311,16 @@ func unlockServer(server *serverStruct) {
 }
 
 func isIPAllowed(ip string, allowedIPs []string) bool {
+	peerIP := net.ParseIP(ip)
+	if peerIP == nil {
+		return false
+	}
 	if len(allowedIPs) == 0 {
 		return true
 	}
 
 	for _, allowedIP := range allowedIPs {
-		if ip == allowedIP {
+		if parsed := net.ParseIP(allowedIP); parsed != nil && peerIP.Equal(parsed) {
 			return true
 		}
 	}

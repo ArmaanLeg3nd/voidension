@@ -51,6 +51,7 @@ func TestEmptyRequestBuffer(t *testing.T) {
 	}
 
 	// Use a response recorder
+	req.RemoteAddr = "127.0.0.1:1234"
 	w := httptest.NewRecorder()
 
 	secureInstance.proxyHandler(w, req)
@@ -111,6 +112,7 @@ func TestRequestForwarding(t *testing.T) {
 	}
 
 	// Use a response recorder
+	req.RemoteAddr = "127.0.0.1:1234"
 	w := httptest.NewRecorder()
 
 	secureInstance.proxyHandler(w, req)
